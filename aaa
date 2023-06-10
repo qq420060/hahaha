@@ -1,0 +1,273 @@
+import math
+import cv2
+import numpy as np
+import win32gui
+import win32ui
+import win32con
+import win32api
+import time
+import gc
+import pyautogui
+from key_mose import clickInput, LEFT_BUTTON
+from PIL import ImageGrab
+from PIL import Image
+
+pyautogui.FAILSAFE = False
+
+def get_window_handle(window_name):
+    def callback(hwnd, hwnds):
+        if win32gui.IsWindowVisible(hwnd) and window_name in win32gui.GetWindowText(hwnd):
+            hwnds.append(hwnd)
+        return True
+    hwnds = []
+    win32gui.EnumWindows(callback, hwnds)
+    return hwnds[0]
+
+def get_color_count(image_path, x1, y1, x2, y2, target_color):
+    image = Image.open(image_path)
+    region = image.crop((x1, y1, x2, y2))
+    colors = region.getcolors(region.size[0] * region.size[1])
+    target_count = 0
+    for color in colors:
+        if color[1] == target_color:
+            target_count = color[0]
+            break
+    return target_count    # 返回结果
+
+def click(x, y):
+    pyautogui.moveTo(x, y, duration=0.1)
+    pyautogui.click()
+
+
+hwnd1 = get_window_handle("拼搏")
+if hwnd1 != 0:
+    win32gui.SetWindowPos(hwnd1, 0, -350, 0, 1040, 805, 0)
+hwnd2 = get_window_handle("巅峰")
+if hwnd2 != 0:
+    win32gui.SetWindowPos(hwnd2, 0, 0, 640, 600, 500, 0)
+
+left, top, right, bottom = win32gui.GetWindowRect(hwnd1)
+width = right - left
+height = bottom - top
+
+cfg_path = "C:/Users/Administrator/PycharmProjects/yolo/yolov3-tiny.cfg"
+weights_path = "C:/Users/Administrator/PycharmProjects/yolo/yolov3-tiny_21400.weights"
+net = cv2.dnn.readNetFromDarknet(cfg_path, weights_path)
+classes = []
+with open(file=r"C:\Users\Administrator\PycharmProjects\yolo\yolov3.names", mode="r") as f:
+    classes = [line.strip() for line in f.readlines()]
+input_size = (416, 416)
+
+gwsw = 0
+jump1 = 0
+loop2 = 0
+loop3 = 0
+
+break_flag1 = False
+break_flag2 = False
+break_flag3 = False
+
+k_f7 = 454, 620
+k_f9 = 584, 620
+k_f11 = 416, 620
+
+x1, y1 = 235, 340       #   右下
+position1 = 235, 340
+l_param1 = win32api.MAKELONG(x1, y1)
+
+x2, y2 = 318, 182      #   右
+position2 = 318, 182
+l_param2 = win32api.MAKELONG(x2, y2)
+
+x3, y3 = 330, 180
+position3 = 330, 180
+l_param3 = win32api.MAKELONG(x3, y3)
+
+clickInput(hwnd1, k_f11, LEFT_BUTTON)
+
+while True:
+
+    try:
+        hwndDC = win32gui.GetWindowDC(hwnd1)
+        mfcDC = win32ui.CreateDCFromHandle(hwndDC)
+        saveDC = mfcDC.CreateCompatibleDC()
+        saveBitMap = win32ui.CreateBitmap()
+        saveBitMap.CreateCompatibleBitmap(mfcDC, width, height)
+        saveDC.SelectObject(saveBitMap)
+        saveDC.BitBlt((0, 0), (width, height), mfcDC, (0, 0), win32con.SRCCOPY)
+        bmpinfo = saveBitMap.GetInfo()
+        bmpstr = saveBitMap.GetBitmapBits(True)
+        image = np.frombuffer(bmpstr, dtype='uint8')
+        image.shape = (bmpinfo['bmHeight'], bmpinfo['bmWidth'], 4)
+        image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+        blob = cv2.dnn.blobFromImage(image, 1 / 255.0, input_size, swapRB=True, crop=False)
+        net.setInput(blob)
+        layer_names = net.getLayerNames()
+        output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
+        outputs = net.forward(output_layers)
+        conf_threshold = 0.5
+        nms_threshold = 0.4
+        boxes = []
+        scores = []
+
+        for output in outputs:
+            for detection in output:
+                class_scores = detection[5:]
+                class_id = np.argmax(class_scores)
+                confidence = class_scores[class_id]
+                if confidence > conf_threshold and classes[class_id] == 'xiezi':
+                    center_x = int(detection[0] * width)
+                    center_y = int(detection[1] * height)
+                    w = int(detection[2] * width)
+                    h = int(detection[3] * height)
+                    x = int(center_x - w / 2)
+                    y = int(center_y - h / 2)
+                    boxes.append([x, y, w, h])
+                    scores.append(float(confidence))
+        indices = cv2.dnn.NMSBoxes(boxes, scores, conf_threshold, nms_threshold)
+        min_distance = float('inf')
+        min_box = None
+        for i in indices:
+            x, y, w, h = boxes[i]
+            center_x = int(x + w / 2)
+            center_y = int(y + h / 2)
+            distance = math.sqrt((center_x - int(width / 2)) ** 2 + (center_y - int(height / 2) + 50) ** 2)
+            if distance < min_distance:
+                min_distance = distance
+                min_box = [x, y, w, h]
+
+            im = ImageGrab.grab(bbox=(120, 290, 220, 320))
+            im.save("R_xuetiao.png")
+            time.sleep(0.1)
+            image_path = "R_xuetiao.png"
+            x1, y1, x2, y2 = 0, 0, 100, 30
+            target_color = (176, 40, 40)
+            R_xuetiao = get_color_count(image_path, x1, y1, x2, y2, target_color)
+
+        if min_box is not None or R_xuetiao > 50:
+            x, y, w, h = min_box
+            cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            center_x = int(x + w / 2)
+            center_y = int(y + h / 2)
+            cv2.line(image, (center_x, center_y), (int(width / 2), int(height / 2) - 50), (0, 0, 255), 2)
+            distance = math.sqrt((center_x - int(width / 2)) ** 2 + (center_y - int(height / 2) + 50) ** 2)
+            print("Distance from center: ", distance)
+            #cv2.imshow("Annotated Image", image)
+
+            x0, y0 = center_x-10, center_y-30
+            position0 = x0, y0
+            l_param0 = win32api.MAKELONG(x0, y0)
+
+            win32gui.PostMessage(hwnd1, win32con.WM_MOUSEMOVE, 0, l_param0)
+            time.sleep(0.1)
+            clickInput(hwnd1, position0, LEFT_BUTTON)
+            time.sleep(0.1)
+            clickInput(hwnd1, position0, LEFT_BUTTON)
+            time.sleep(0.1)
+            clickInput(hwnd1, position0, LEFT_BUTTON)
+            time.sleep(0.1)
+            clickInput(hwnd1, position0, LEFT_BUTTON)
+
+            im = ImageGrab.grab(bbox=(x0-100, y0-90, x0+10, y0+10))
+            im.save("G_xuetiao.png")
+            time.sleep(0.1)
+            image_path = "G_xuetiao.png"
+            x1, y1, x2, y2 = 0, 0, 110, 100
+            target_color = (176, 40, 40)
+            G_xuetiao = get_color_count(image_path, x1, y1, x2, y2, target_color)
+
+            im = ImageGrab.grab(bbox=(120, 290, 220, 320))
+            im.save("R_xuetiao.png")
+            time.sleep(0.1)
+            image_path = "R_xuetiao.png"
+            x1, y1, x2, y2 = 0, 0, 100, 30
+            target_color = (176, 40, 40)
+            R_xuetiao = get_color_count(image_path, x1, y1, x2, y2, target_color)
+
+
+            if G_xuetiao > 80 or R_xuetiao > 50:
+                time.sleep(0.1)
+                clickInput(hwnd1, k_f7, LEFT_BUTTON)
+                print("ok", G_xuetiao)
+
+                while True:
+                    im = ImageGrab.grab(bbox=(120, 290, 220, 320))
+                    im.save("R_xuetiao.png")
+                    time.sleep(0.1)
+                    image_path = "R_xuetiao.png"
+                    x1, y1, x2, y2 = 0, 0, 100, 30
+                    target_color = (176, 40, 40)
+                    R_xuetiao = get_color_count(image_path, x1, y1, x2, y2, target_color)
+
+                    if jump1 == 1:
+                        time.sleep(0.5)
+                        jump1 = 0
+                        print("跳出循环")
+                        break
+
+                    if R_xuetiao > 50:
+                        time.sleep(0.1)
+                        clickInput(hwnd1, position1, LEFT_BUTTON)
+                        time.sleep(0.2)
+                        clickInput(hwnd1, k_f7, LEFT_BUTTON)
+                        time.sleep(0.2)
+                        print("r_xue", R_xuetiao)
+                        time.sleep(0.2)
+                        print("daoda")
+
+                        win32gui.PostMessage(hwnd1, win32con.WM_MOUSEMOVE, 0, l_param1)
+                        time.sleep(0.1)
+                        clickInput(hwnd1, position1, LEFT_BUTTON)
+                        time.sleep(0.1)
+                        clickInput(hwnd1, position1, LEFT_BUTTON)
+                        time.sleep(0.1)
+
+                        time.sleep(0.5)
+
+                        win32gui.PostMessage(hwnd2, win32con.WM_MOUSEMOVE, 0, l_param2)
+                        time.sleep(0.1)
+                        clickInput(hwnd2, position2, LEFT_BUTTON)
+                        time.sleep(0.1)
+                        clickInput(hwnd2, position2, LEFT_BUTTON)
+                        time.sleep(0.1)
+
+                        time.sleep(0.5)
+
+                        win32gui.PostMessage(hwnd1, win32con.WM_MOUSEMOVE, 0, l_param1)
+                        time.sleep(0.1)
+                        clickInput(hwnd1, position1, LEFT_BUTTON)
+                        time.sleep(0.1)
+                        clickInput(hwnd1, position1, LEFT_BUTTON)
+                        time.sleep(0.1)
+                        print("gongji")
+                        time.sleep(0.5)
+                        print("cunhuo")
+                        while True:
+                            im = ImageGrab.grab(bbox=(185, 290, 235, 310))
+                            im.save("R_H_xuetiao.png")
+                            time.sleep(0.1)
+                            image_path = "R_H_xuetiao.png"
+                            x1, y1, x2, y2 = 0, 0, 50, 20
+                            target_color = (0, 0, 0)
+                            R_H_xuetiao = get_color_count(image_path, x1, y1, x2, y2, target_color)
+                            print("guai_hei_xue", R_H_xuetiao)
+                            if R_H_xuetiao > 90:
+                                gwsw += 1
+                                print("gwsw", gwsw)
+                                time.sleep(5)
+                                clickInput(hwnd1, k_f9, LEFT_BUTTON)
+                                time.sleep(1)
+                                clickInput(hwnd1, k_f11, LEFT_BUTTON)
+                                time.sleep(0.5)
+                                gc.collect()
+                                jump1 = 1
+                                break
+        else:
+            print("哈哈哈")
+            time.sleep(0.5)
+
+    except win32ui.error:
+        continue
+    cv2.waitKey(1)
+cv2.destroyAllWindows()
+
